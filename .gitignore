@@ -1,0 +1,85 @@
+# 🔒 ARQUIVO .GITIGNORE - PROTEÇÃO DE CREDENCIAIS
+
+# ========================
+# CREDENCIAIS E CHAVES (NUNCA COMMITAR!)
+# ========================
+.env
+.env.local
+.env.*.local
+config/credentials.enc
+config/.key
+*.key
+*.pem
+
+# ========================  
+# DADOS SENSÍVEIS
+# ========================
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# ========================
+# CACHE E TEMP
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ========================
+# JUPYTER NOTEBOOKS
+# ========================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ========================
+# VS CODE
+# ========================
+.vscode/settings.json
+.vscode/launch.json
+
+# ========================
+# SISTEMA OPERACIONAL
+# ========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ========================
+# OUTROS
+# ========================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/

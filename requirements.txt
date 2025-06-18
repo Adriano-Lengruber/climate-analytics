@@ -1,0 +1,35 @@
+# Análise de Dados e Visualização
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+
+# Machine Learning
+scikit-learn
+xgboost
+
+# APIs e Web Scraping
+requests
+python-dotenv
+
+# Segurança e Criptografia
+cryptography
+
+# Dashboard e Interface
+streamlit
+streamlit-folium
+
+# Processamento de dados geoespaciais
+folium
+
+# Utilitários
+python-dateutil
+pytz
+schedule
+
+# Desenvolvimento
+jupyter
+black
+pytest
+scipy
