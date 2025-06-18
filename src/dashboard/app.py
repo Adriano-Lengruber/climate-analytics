@@ -19,6 +19,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import Config
 from src.api.weather_api import OpenWeatherClient
 from src.api.air_quality_api import AirQualityClient
+from src.dashboard.advanced_components import DashboardComponents
 
 # Configuração da página
 st.set_page_config(**Config.STREAMLIT_CONFIG)
@@ -107,13 +108,13 @@ def main():
     if not any(api_status.values()):
         show_setup_instructions()
         return
-    
-    # Tabs principais
-    tab1, tab2, tab3, tab4 = st.tabs([
+      # Tabs principais
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Dashboard Principal", 
         "🌡️ Análise Climática", 
         "💨 Qualidade do Ar", 
-        "🤖 Previsões IA"
+        "🤖 Previsões IA",
+        "🧠 Análise Avançada"
     ])
     
     with tab1:
@@ -127,6 +128,9 @@ def main():
     
     with tab4:
         show_ai_predictions(location)
+    
+    with tab5:
+        show_advanced_analysis()
 
 def check_api_configuration():
     """Verifica se as APIs estão configuradas."""
@@ -303,6 +307,57 @@ def show_ai_predictions(location):
     """Tab de previsões com IA."""
     st.header("🤖 Previsões com Inteligência Artificial")
     st.info("🚧 Em desenvolvimento - Modelos de ML para previsões climáticas")
+
+def show_advanced_analysis():
+    """Tab de análise avançada com novos componentes."""
+    st.header("🧠 Análise Avançada de Dados Climáticos")
+    
+    # Verifica se há dados no banco
+    db_path = Config.DATABASE_PATH
+    
+    try:
+        import sqlite3
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM weather_data")
+            weather_count = cursor.fetchone()[0]
+            
+            if weather_count == 0:
+                st.warning("⚠️ Não há dados suficientes para análise avançada. Execute o coletor de dados primeiro.")
+                return
+    except Exception as e:
+        st.error(f"Erro ao verificar banco de dados: {e}")
+        return
+    
+    # Seletores de tipo de análise
+    analysis_options = st.multiselect(
+        "Selecione os tipos de análise:",
+        [
+            "🚨 Sistema de Alertas Inteligentes",
+            "🔗 Análise de Correlações",
+            "🌿 Índice de Saúde Ambiental",
+            "🔮 Previsões Baseadas em Tendências"
+        ],
+        default=["🚨 Sistema de Alertas Inteligentes", "🌿 Índice de Saúde Ambiental"]
+    )
+    
+    st.markdown("---")
+    
+    # Renderiza componentes selecionados
+    if "🚨 Sistema de Alertas Inteligentes" in analysis_options:
+        DashboardComponents.render_alert_panel(db_path)
+        st.markdown("---")
+    
+    if "🔗 Análise de Correlações" in analysis_options:
+        DashboardComponents.render_correlation_analysis(db_path)
+        st.markdown("---")
+    
+    if "🌿 Índice de Saúde Ambiental" in analysis_options:
+        DashboardComponents.render_environmental_health_index(db_path)
+        st.markdown("---")
+    
+    if "🔮 Previsões Baseadas em Tendências" in analysis_options:
+        DashboardComponents.render_forecast_panel(db_path)
 
 if __name__ == "__main__":
     main()
