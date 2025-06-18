@@ -20,6 +20,7 @@ from config.settings import Config
 from src.api.weather_api import OpenWeatherClient
 from src.api.air_quality_api import AirQualityClient
 from src.dashboard.advanced_components import DashboardComponents
+from src.dashboard.welcome_page import show_welcome_page
 
 # Configuração da página
 st.set_page_config(**Config.STREAMLIT_CONFIG)
@@ -69,6 +70,22 @@ st.markdown("""
 
 def main():
     """Função principal da aplicação."""
+    
+    # Verificar se deve mostrar a página de boas-vindas
+    if st.session_state.get('show_welcome', True):
+        # Verifica se as APIs estão configuradas
+        api_status = Config.validate_api_keys()
+        
+        # Se as APIs não estão configuradas, mostra a página de boas-vindas
+        if not all(api_status.values()):
+            system_ready = show_welcome_page()
+            if not system_ready:
+                return  # Para aqui se ainda precisa de configuração
+        else:
+            # APIs estão configuradas, pode pular para o dashboard
+            st.session_state.show_welcome = False
+    
+    # Continua com o dashboard normal se as APIs estão configuradas
     
     # Header
     st.markdown('<h1 class="main-header">🌍 Climate & Air Quality Analytics</h1>', 
