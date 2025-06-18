@@ -156,7 +156,8 @@ def show_welcome_page() -> bool:
         <div class="success-box">
             <h3>🎉 Credenciais Configuradas!</h3>
             <p>Suas credenciais estão prontas. Você pode acessar o dashboard agora!</p>
-        </div>        """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns(3)
         
@@ -167,9 +168,6 @@ def show_welcome_page() -> bool:
         with col2:
             if st.button("🔄 Reconfigurar", use_container_width=True):
                 _clear_credentials()
-                # Limpar estado de credenciais salvas para permitir nova configuração
-                if 'credentials_saved' in st.session_state:
-                    del st.session_state.credentials_saved
                 st.rerun()
         
         with col3:
@@ -253,7 +251,8 @@ def show_welcome_page() -> bool:
         with col2:
             test_button = st.form_submit_button(
                 "🧪 Testar Apenas", 
-                use_container_width=True            )
+                use_container_width=True
+            )
     
     # Processar formulário
     if submit_button:
@@ -263,15 +262,9 @@ def show_welcome_page() -> bool:
                 air_valid, air_msg = _test_airvisual_api(airvisual_key)
             
             if weather_valid and air_valid:
-                if _save_credentials_securely(openweather_key, airvisual_key):
-                    st.success("🎉 **Credenciais salvas com sucesso!** Redirecionando...")
+                if _save_credentials_securely(openweather_key, airvisual_key):                    st.success("🎉 **Credenciais salvas com sucesso!** Redirecionando...")
                     st.balloons()
-                    
-                    # Proteção contra loop infinito
-                    if 'credentials_saved' not in st.session_state:                        st.session_state.credentials_saved = True
-                        st.rerun()
-                    else:
-                        st.info("✅ Credenciais já foram salvas. Recarregue a página para continuar.")
+                    st.rerun()
                 else:
                     st.error("❌ Erro ao salvar credenciais. Tente novamente.")
             else:
@@ -293,8 +286,7 @@ def show_welcome_page() -> bool:
                         st.success(f"✅ **OpenWeatherMap:** {msg}")
                     else:
                         st.error(f"❌ **OpenWeatherMap:** {msg}")
-            
-            if airvisual_key:
+              if airvisual_key:
                 with st.spinner("Testando AirVisual..."):
                     valid, msg = _test_airvisual_api(airvisual_key)
                     if valid:
@@ -304,7 +296,7 @@ def show_welcome_page() -> bool:
         else:
             st.warning("⚠️ **Insira pelo menos uma chave para testar.**")
     
-    # Não retornar False automaticamente para evitar loop
+    # Não retornar False para evitar loop - apenas terminar a função
     return None
 
 
