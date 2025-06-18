@@ -20,7 +20,7 @@ from config.settings import Config
 from src.api.weather_api import OpenWeatherClient
 from src.api.air_quality_api import AirQualityClient
 from src.dashboard.advanced_components import DashboardComponents
-from src.dashboard.welcome_page import show_welcome_page
+from src.dashboard.welcome_simple import show_welcome_page
 
 # Configuração da página
 st.set_page_config(**Config.STREAMLIT_CONFIG)
