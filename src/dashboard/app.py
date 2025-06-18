@@ -52,38 +52,51 @@ st.markdown("""
 
 def main():
     """Função principal da aplicação."""
-    
-    # Verificar se as credenciais estão configuradas
+      # Verificar se as credenciais estão configuradas
     has_credentials = False
     if os.path.exists('.env'):
         try:
             with open('.env', 'r', encoding='utf-8') as f:
                 content = f.read()
-                has_openweather = 'OPENWEATHER_API_KEY=' in content and len(content.split('OPENWEATHER_API_KEY=')[1].split('\n')[0].strip()) > 10
-                has_airvisual = 'AIRVISUAL_API_KEY=' in content and len(content.split('AIRVISUAL_API_KEY=')[1].split('\n')[0].strip()) > 10
+                # Verificar se as linhas das chaves existem e não estão vazias
+                openweather_line = [line for line in content.split('\n') if line.startswith('OPENWEATHER_API_KEY=')]
+                airvisual_line = [line for line in content.split('\n') if line.startswith('AIRVISUAL_API_KEY=')]
+                
+                has_openweather = (
+                    len(openweather_line) > 0 and 
+                    len(openweather_line[0].split('=', 1)[1].strip()) > 10
+                )
+                has_airvisual = (
+                    len(airvisual_line) > 0 and 
+                    len(airvisual_line[0].split('=', 1)[1].strip()) > 10
+                )
                 has_credentials = has_openweather and has_airvisual
-        except:
+        except Exception as e:
+            st.error(f"Erro ao verificar credenciais: {e}")
             has_credentials = False
-    
-    # Debug na sidebar
+      # Debug na sidebar
     with st.sidebar:
-        st.header("� Debug Info")
+        st.header("🔧 Debug Info")
         st.write(f"**Credenciais:** {has_credentials}")
         st.write(f"**Arquivo .env:** {os.path.exists('.env')}")
-        if st.button("🔄 Recarregar"):
+        
+        # Proteção contra loop infinito
+        if 'reload_count' not in st.session_state:
+            st.session_state.reload_count = 0
+            
+        if st.button("🔄 Recarregar") and st.session_state.reload_count < 3:
+            st.session_state.reload_count += 1
             st.rerun()
-    
-    # Se não há credenciais válidas, mostrar página de boas-vindas
+        elif st.session_state.reload_count >= 3:
+            st.warning("⚠️ Muitos recarregamentos. Recarregue a página manualmente se necessário.")
+      # Se não há credenciais válidas, mostrar página de boas-vindas
     if not has_credentials:
         st.info("🚀 **Bem-vindo ao Climate Analytics!** Configure suas credenciais para começar.")
         
         # Mostrar página de boas-vindas
-        system_ready = show_welcome_page()
+        show_welcome_page()
         
-        if system_ready:
-            st.success("✅ **Sistema configurado!** Clique em 'Recarregar' na sidebar para continuar.")
-        
-        # Para a execução aqui para mostrar apenas a página de boas-vindas
+        # Para a execução aqui para evitar loop
         st.stop()
     
     # Dashboard principal - só chega aqui se tem credenciais

@@ -268,7 +268,8 @@ def show_welcome_page() -> bool:
                     st.balloons()
                     
                     # Proteção contra loop infinito
-                    if 'credentials_saved' not in st.session_state:                        st.session_state.credentials_saved = True
+                    if 'credentials_saved' not in st.session_state:
+                        st.session_state.credentials_saved = True
                         st.rerun()
                     else:
                         st.info("✅ Credenciais já foram salvas. Recarregue a página para continuar.")
@@ -293,8 +294,7 @@ def show_welcome_page() -> bool:
                         st.success(f"✅ **OpenWeatherMap:** {msg}")
                     else:
                         st.error(f"❌ **OpenWeatherMap:** {msg}")
-            
-            if airvisual_key:
+              if airvisual_key:
                 with st.spinner("Testando AirVisual..."):
                     valid, msg = _test_airvisual_api(airvisual_key)
                     if valid:
