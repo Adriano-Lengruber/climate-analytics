@@ -20,7 +20,7 @@ from config.settings import Config
 from src.api.weather_api import OpenWeatherClient
 from src.api.air_quality_api import AirQualityClient
 from src.dashboard.advanced_components import DashboardComponents
-from src.dashboard.welcome_simple import show_welcome_page
+from src.dashboard.welcome_clean import show_welcome_page
 
 # Configuração da página
 st.set_page_config(**Config.STREAMLIT_CONFIG)
@@ -71,19 +71,43 @@ st.markdown("""
 def main():
     """Função principal da aplicação."""
     
-    # Verificar se deve mostrar a página de boas-vindas
-    if st.session_state.get('show_welcome', True):
-        # Verifica se as APIs estão configuradas
-        api_status = Config.validate_api_keys()
+    # Verificar se deve mostrar a página de boas-vindas    # Sempre mostrar se não há credenciais configuradas
+    
+    # Verifica se existe arquivo .env com credenciais válidas
+    env_exists = os.path.exists('.env')
+    has_credentials = False
+    
+    # Debug - Adicionar informações sobre o estado
+    st.sidebar.write(f"🔍 Debug: .env existe? {env_exists}")
+    
+    if env_exists:
+        try:
+            with open('.env', 'r', encoding='utf-8') as f:
+                content = f.read()
+                has_openweather = 'OPENWEATHER_API_KEY=' in content and len(content.split('OPENWEATHER_API_KEY=')[1].split('\n')[0].strip()) > 10
+                has_airvisual = 'AIRVISUAL_API_KEY=' in content and len(content.split('AIRVISUAL_API_KEY=')[1].split('\n')[0].strip()) > 10
+                has_credentials = has_openweather and has_airvisual
+        except:
+            has_credentials = False
+    
+    # Debug - Adicionar mais informações
+    st.sidebar.write(f"🔍 Debug: has_credentials? {has_credentials}")    # Se não há credenciais válidas, mostrar página de boas-vindas
+    if not has_credentials:
+        st.sidebar.write("🎯 Debug: Entrando na página de boas-vindas!")
+        st.session_state.show_welcome = True  # Força a exibição da página de boas-vindas
         
-        # Se as APIs não estão configuradas, mostra a página de boas-vindas
-        if not all(api_status.values()):
-            system_ready = show_welcome_page()
-            if not system_ready:
-                return  # Para aqui se ainda precisa de configuração
-        else:
-            # APIs estão configuradas, pode pular para o dashboard
+        # Chama a página de boas-vindas e verifica se deve continuar
+        system_ready = show_welcome_page()
+        
+        if system_ready:
+            st.sidebar.write("🎯 Debug: Credenciais configuradas, continuando para dashboard")
+            # Credenciais configuradas, continuar para dashboard
             st.session_state.show_welcome = False
+            # NÃO faz return aqui, continua para o dashboard
+        else:
+            st.sidebar.write("🎯 Debug: Ainda mostrando página de boas-vindas")
+            # Para aqui para manter a página de boas-vindas visível
+            st.stop()  # Para a execução mas mantém o que já foi renderizado
     
     # Continua com o dashboard normal se as APIs estão configuradas
     
@@ -120,12 +144,12 @@ def main():
         else:
             location = {"type": "current"}
             st.info("📍 Usando localização padrão: São Paulo, BR")
-    
-    # Conteúdo principal
+      # Conteúdo principal
     if not any(api_status.values()):
         show_setup_instructions()
         return
-      # Tabs principais
+    
+    # Tabs principais
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Dashboard Principal", 
         "🌡️ Análise Climática", 
