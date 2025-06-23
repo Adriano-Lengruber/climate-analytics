@@ -354,15 +354,20 @@ def show_main_dashboard(location):
         from datetime import datetime, timedelta
         import numpy as np
         
-        # Gerar dados simulados para demonstração
-        now = datetime.now()
-        hours = [now - timedelta(hours=i) for i in range(23, -1, -1)]
-        temps = [temp + np.random.normal(0, 2) for _ in range(24)]
+        # Gerar dados simulados usando session_state para manter consistência
+        if 'hourly_temps' not in st.session_state:
+            # Gerar dados simulados apenas uma vez
+            now = datetime.now()
+            hours = [now - timedelta(hours=i) for i in range(23, -1, -1)]
+            np.random.seed(42)  # Seed fixo para consistência
+            temps = [temp + np.random.normal(0, 2) for _ in range(24)]
+            
+            st.session_state.hourly_temps = pd.DataFrame({
+                'Hora': hours,
+                'Temperatura': temps
+            })
         
-        df_temp = pd.DataFrame({
-            'Hora': hours,
-            'Temperatura': temps
-        })
+        df_temp = st.session_state.hourly_temps
         
         fig_temp = px.line(df_temp, x='Hora', y='Temperatura', 
                           title='Temperatura nas últimas 24 horas',
@@ -663,25 +668,40 @@ def show_climate_analysis(location):
     current_temp = weather_data['weather']['temperature']
     dates = [datetime.now() - timedelta(days=i) for i in range(29, -1, -1)]
     
-    # Simular variação sazonal e diária
-    temps_max = []
-    temps_min = []
-    humidity_data = []
-    pressure_data = []
+    # Simular variação sazonal e diária    # Usar session_state para dados consistentes
+    if 'forecast_data' not in st.session_state:
+        np.random.seed(42)  # Seed fixo para consistência
+        temps_max = []
+        temps_min = []
+        humidity_data = []
+        pressure_data = []
+        
+        for i, date in enumerate(dates):
+            # Variação sazonal baseada no dia do ano
+            seasonal_var = 3 * np.sin(2 * np.pi * date.timetuple().tm_yday / 365)
+            
+            # Temperatura base com variação
+            base_temp = current_temp + seasonal_var + np.random.normal(0, 2)
+            temp_max = base_temp + np.random.uniform(2, 8)
+            temp_min = base_temp - np.random.uniform(2, 6)
+            
+            temps_max.append(temp_max)
+            temps_min.append(temp_min)
+            humidity_data.append(weather_data['weather']['humidity'] + np.random.normal(0, 10))
+            pressure_data.append(weather_data['weather']['pressure'] + np.random.normal(0, 15))
+        
+        st.session_state.forecast_data = {
+            'temps_max': temps_max,
+            'temps_min': temps_min,
+            'humidity': humidity_data,
+            'pressure': pressure_data
+        }
     
-    for i, date in enumerate(dates):
-        # Variação sazonal baseada no dia do ano
-        seasonal_var = 3 * np.sin(2 * np.pi * date.timetuple().tm_yday / 365)
-        
-        # Temperatura base com variação
-        base_temp = current_temp + seasonal_var + np.random.normal(0, 2)
-        temp_max = base_temp + np.random.uniform(2, 8)
-        temp_min = base_temp - np.random.uniform(2, 6)
-        
-        temps_max.append(temp_max)
-        temps_min.append(temp_min)
-        humidity_data.append(weather_data['weather']['humidity'] + np.random.normal(0, 10))
-        pressure_data.append(weather_data['weather']['pressure'] + np.random.normal(0, 15))
+    # Usar dados do session_state
+    temps_max = st.session_state.forecast_data['temps_max']
+    temps_min = st.session_state.forecast_data['temps_min']
+    humidity_data = st.session_state.forecast_data['humidity']
+    pressure_data = st.session_state.forecast_data['pressure']
     
     df_historical = pd.DataFrame({
         'Data': dates,
@@ -980,13 +1000,12 @@ def show_air_quality_analysis(location):
                             'maincn': main_pollutant
                         }
                     },
-                    'estimated': True
-                }
+                    'estimated': True                }
                 data_source = "estimated"
                 
             except Exception as fallback_e:
-                # Último recurso: dados completamente simulados
-                estimated_aqi = np.random.randint(30, 90)
+                # Último recurso: dados fixos
+                estimated_aqi = 65  # Valor fixo em vez de aleatório
                 air_data = {
                     'current': {
                         'pollution': {
@@ -1417,8 +1436,7 @@ def show_ai_predictions(location):
             xaxis_title="Data",
             yaxis_title="Temperatura (°C)",
             height=400,
-            template="plotly_white"
-        )
+            template="plotly_white"        )
         
         st.plotly_chart(fig_temp, use_container_width=True)
         
@@ -1429,7 +1447,7 @@ def show_ai_predictions(location):
             st.metric(
                 "🎯 Acurácia Média",
                 f"{np.mean(df_predictions['confianca']):.1f}%",
-                delta=f"+{np.random.randint(1,5)}%"
+                delta=f"+{get_consistent_random_data('accuracy_delta', 1, 5, 3)}%"
             )
         
         with col2:
@@ -2255,6 +2273,19 @@ def generate_fallback_data(location):
     }
     
     return fallback_weather, fallback_air
+
+def get_consistent_random_data(key: str, min_val: int, max_val: int, default: int = None) -> int:
+    """Gera dados 'aleatórios' consistentes usando session_state."""
+    if key not in st.session_state:
+        if default is not None:
+            st.session_state[key] = default
+        else:
+            # Usar hash da chave como seed para consistência
+            import hashlib
+            seed = int(hashlib.md5(key.encode()).hexdigest()[:8], 16) % 1000
+            np.random.seed(seed)
+            st.session_state[key] = np.random.randint(min_val, max_val + 1)
+    return st.session_state[key]
 
 # Executar a aplicação
 if __name__ == "__main__":

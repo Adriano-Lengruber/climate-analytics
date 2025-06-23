@@ -298,9 +298,7 @@ def show_welcome_page() -> bool:
         else:
             st.warning("⚠️ **Insira pelo menos uma chave para testar.**")
     
-    # Alterado de 'return False' para 'return None' para evitar loop infinito
-    # O False estava causando reexecução constante no app.py
-    return None
+    return False
 
 
 def _check_existing_credentials() -> bool:
