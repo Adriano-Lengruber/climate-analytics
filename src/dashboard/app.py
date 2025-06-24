@@ -15,6 +15,11 @@ from pathlib import Path
 import numpy as np
 import requests
 import time
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Adiciona o diretório raiz ao path
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -34,63 +39,60 @@ st.set_page_config(
 )
 
 def get_user_location():
-    """Detecta a localização do usuário usando IP."""
+    """Detecta a localização do usuário usando IP com fallback robusto."""
     try:
-        response = requests.get('http://ip-api.com/json/', timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data['status'] == 'success':
-                return {
-                    'city': data.get('city', 'São Paulo'),
-                    'country': data.get('country', 'Brazil'),
-                    'lat': data.get('lat', -23.5505),
-                    'lon': data.get('lon', -46.6333),
-                    'region': data.get('regionName', 'São Paulo')
-                }
+        # Tentar múltiplos serviços de geolocalização
+        services = [
+            'http://ip-api.com/json/',
+            'https://ipapi.co/json/',
+            'https://freegeoip.app/json/'
+        ]
+        
+        for service in services:
+            try:
+                response = requests.get(service, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Normalizar dados de diferentes APIs
+                    if 'status' in data and data['status'] == 'success':  # ip-api
+                        return {
+                            'city': data.get('city', 'São Paulo'),
+                            'country': data.get('country', 'Brazil'),
+                            'country_code': data.get('countryCode', 'BR'),
+                            'lat': data.get('lat', -23.5505),
+                            'lon': data.get('lon', -46.6333),
+                            'region': data.get('regionName', 'São Paulo')
+                        }
+                    elif 'city' in data:  # ipapi.co e freegeoip
+                        return {
+                            'city': data.get('city', 'São Paulo'),
+                            'country': data.get('country_name', data.get('country', 'Brazil')),
+                            'country_code': data.get('country_code', 'BR'),
+                            'lat': data.get('latitude', data.get('lat', -23.5505)),
+                            'lon': data.get('longitude', data.get('lon', -46.6333)),
+                            'region': data.get('region', data.get('regionName', 'São Paulo'))
+                        }
+            except Exception as e:
+                logger.warning(f"Erro ao usar serviço {service}: {e}")
+                continue
+                
     except Exception as e:
-        st.warning(f"Não foi possível detectar sua localização: {e}")
+        logger.warning(f"Erro geral na detecção de localização: {e}")
     
-    # Fallback para São Paulo
+    # Fallback para São Paulo se todos os serviços falharem
     return {
         'city': 'São Paulo',
-        'country': 'Brazil', 
+        'country': 'Brazil',
+        'country_code': 'BR', 
         'lat': -23.5505,
         'lon': -46.6333,
         'region': 'São Paulo'
     }
 
 def get_available_cities():
-    """Lista de cidades principais disponíveis."""
-    return {
-        'São Paulo, BR': {'lat': -23.5505, 'lon': -46.6333, 'country': 'BR'},
-        'Rio de Janeiro, BR': {'lat': -22.9068, 'lon': -43.1729, 'country': 'BR'},
-        'Brasília, BR': {'lat': -15.8267, 'lon': -47.9218, 'country': 'BR'},
-        'Salvador, BR': {'lat': -12.9714, 'lon': -38.5124, 'country': 'BR'},
-        'Fortaleza, BR': {'lat': -3.7319, 'lon': -38.5267, 'country': 'BR'},
-        'Belo Horizonte, BR': {'lat': -19.9167, 'lon': -43.9345, 'country': 'BR'},
-        'Manaus, BR': {'lat': -3.1190, 'lon': -60.0217, 'country': 'BR'},
-        'Curitiba, BR': {'lat': -25.4284, 'lon': -49.2733, 'country': 'BR'},
-        'Recife, BR': {'lat': -8.0476, 'lon': -34.8770, 'country': 'BR'},
-        'Porto Alegre, BR': {'lat': -30.0346, 'lon': -51.2177, 'country': 'BR'},
-        'New York, US': {'lat': 40.7128, 'lon': -74.0060, 'country': 'US'},
-        'London, UK': {'lat': 51.5074, 'lon': -0.1278, 'country': 'GB'},
-        'Paris, FR': {'lat': 48.8566, 'lon': 2.3522, 'country': 'FR'},
-        'Tokyo, JP': {'lat': 35.6762, 'lon': 139.6503, 'country': 'JP'},
-        'Beijing, CN': {'lat': 39.9042, 'lon': 116.4074, 'country': 'CN'},
-        'Mumbai, IN': {'lat': 19.0760, 'lon': 72.8777, 'country': 'IN'},
-        'Sydney, AU': {'lat': -33.8688, 'lon': 151.2093, 'country': 'AU'},
-    }
-
-def collect_data_for_location(city_data):
-    """Coleta dados para uma localização específica."""
-    try:
-        # Simular coleta de dados (substitua pela integração real com data_collector)
-        # Por enquanto, vamos apenas simular um delay
-        time.sleep(2)
-        return True
-    except Exception as e:
-        st.error(f"Erro ao coletar dados: {e}")
-        return False
+    """Lista de cidades principais disponíveis (mantida para compatibilidade)."""
+    return get_dynamic_cities()
 
 def get_air_quality_status(aqi):
     """Retorna status da qualidade do ar baseado no AQI."""
@@ -144,13 +146,14 @@ def load_climate_data(selected_city=None):
         air_df = pd.read_sql_query(air_query, conn)
         
         conn.close()
-          # Converter timestamp com tratamento robusto
+        
+        # Converter timestamp com tratamento robusto
         if not weather_df.empty:
             weather_df['timestamp'] = pd.to_datetime(weather_df['timestamp'], errors='coerce', utc=True)
-            weather_df = weather_df.dropna(subset=['timestamp'])  # Remove linhas com timestamp inválido
+            weather_df = weather_df.dropna(subset=['timestamp'])
         if not air_df.empty:
             air_df['timestamp'] = pd.to_datetime(air_df['timestamp'], errors='coerce', utc=True)
-            air_df = air_df.dropna(subset=['timestamp'])  # Remove linhas com timestamp inválido
+            air_df = air_df.dropna(subset=['timestamp'])
         
         return weather_df, air_df
     except Exception as e:
@@ -173,48 +176,17 @@ def check_credentials():
     except Exception:
         return False
 
-def show_welcome_page():
-    """Página de boas-vindas e configuração."""
-    st.title("🌍 Climate Analytics")
-    st.markdown("### Sistema Profissional de Monitoramento Climático")
-    st.markdown("---")
-    
-    st.info("🚀 **Configure suas credenciais para começar a análise climática**")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("""
-        ### 🔑 APIs Necessárias
-        
-        **OpenWeatherMap API** (Gratuita)
-        - Dados meteorológicos em tempo real
-        - Previsões de até 5 dias
-        - Acesse: https://openweathermap.org/api
-        
-        **IQAir AirVisual API** (Gratuita)
-        - Qualidade do ar global
-        - Índices AQI US e China
-        - Acesse: https://www.iqair.com/air-pollution-data-api
-        """)
-    
-    with col2:
-        st.markdown("""
-        ### ⚙️ Como Configurar
-        
-        1. **Obtenha suas chaves das APIs**
-        2. **Execute no terminal:**
-        ```bash
-        python setup_credentials.py
-        ```
-        3. **Ou crie arquivo `.env`:**
-        ```env
-        OPENWEATHER_API_KEY=sua_chave_aqui
-        AIRVISUAL_API_KEY=sua_chave_aqui        ```
-        """)
-    
-    if st.button("🔄 Verificar Credenciais", type="primary"):
-        st.info("♻️ Atualize a página para verificar as credenciais configuradas.")
+def collect_data_for_city(city_name, lat, lon):
+    """Coleta dados para uma cidade específica."""
+    try:
+        import subprocess
+        # Executar o coletor de dados com parâmetros da cidade
+        cmd = f'python data_collector.py --city="{city_name}" --lat={lat} --lon={lon}'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception as e:
+        st.error(f"Erro ao coletar dados: {e}")
+        return False
 
 def create_weather_analysis(weather_df):
     """Análise meteorológica avançada."""
@@ -232,34 +204,22 @@ def create_weather_analysis(weather_df):
     
     with col1:
         st.metric(
-            "🌡️ Temperatura Atual", 
+            "🌡️ Temperatura", 
             f"{latest['temperature']:.1f}°C",
             delta=f"Sensação: {latest['feels_like']:.1f}°C"
         )
     
     with col2:
-        st.metric(
-            "💧 Umidade", 
-            f"{latest['humidity']}%"
-        )
+        st.metric("💧 Umidade", f"{latest['humidity']}%")
     
     with col3:
-        st.metric(
-            "🌬️ Pressão", 
-            f"{latest['pressure']} hPa"
-        )
+        st.metric("🌬️ Pressão", f"{latest['pressure']} hPa")
     
     with col4:
-        st.metric(
-            "💨 Vento", 
-            f"{latest['wind_speed']} m/s"
-        )
+        st.metric("💨 Vento", f"{latest['wind_speed']} m/s")
     
     with col5:
-        st.metric(
-            "👁️ Visibilidade", 
-            f"{latest['visibility']} km"
-        )
+        st.metric("👁️ Visibilidade", f"{latest['visibility']} km")
     
     # Informações contextuais
     st.markdown(f"""
@@ -270,12 +230,13 @@ def create_weather_analysis(weather_df):
     """)
     
     st.markdown("---")
-      # Gráficos de tendência
+    
+    # Gráficos de tendência
     if len(weather_df) > 1:
         col1, col2 = st.columns(2)
         
         with col1:
-            # Gráfico de temperatura com contexto
+            # Gráfico de temperatura
             fig_temp = go.Figure()
             fig_temp.add_trace(go.Scatter(
                 x=weather_df['timestamp'],
@@ -310,11 +271,11 @@ def create_weather_analysis(weather_df):
             st.plotly_chart(fig_temp, use_container_width=True)
         
         with col2:
-            # Gráfico combinado mais informativo
+            # Gráfico de umidade e pressão
             fig_env = go.Figure()
             
-            # Normalizar pressão para visualização (pressão típica: 1000-1020 hPa)
-            pressure_normalized = ((weather_df['pressure'] - 1000) / 20) * 100  # Converter para escala 0-100
+            # Normalizar pressão para visualização
+            pressure_normalized = ((weather_df['pressure'] - 1000) / 20) * 100
             
             fig_env.add_trace(go.Scatter(
                 x=weather_df['timestamp'],
@@ -384,16 +345,10 @@ def create_air_quality_analysis(air_df):
         st.markdown(f"**Status:** {aqi_cn_status}")
     
     with col3:
-        st.metric(
-            "🌡️ Temperatura", 
-            f"{latest['temperature']}°C"
-        )
+        st.metric("🌡️ Temperatura", f"{latest['temperature']}°C")
     
     with col4:
-        st.metric(
-            "💧 Umidade", 
-            f"{latest['humidity']}%"
-        )
+        st.metric("💧 Umidade", f"{latest['humidity']}%")
     
     # Informações contextuais
     st.markdown(f"""
@@ -424,9 +379,10 @@ def create_air_quality_analysis(air_df):
         """)
     
     st.markdown("---")
-      # Gráficos de tendência
+    
+    # Gráficos de tendência
     if len(air_df) > 1:
-        # Gráfico comparativo AQI mais informativo
+        # Gráfico comparativo AQI
         fig_aqi = go.Figure()
         fig_aqi.add_trace(go.Scatter(
             x=air_df['timestamp'],
@@ -445,130 +401,24 @@ def create_air_quality_analysis(air_df):
             hovertemplate='<b>AQI China: %{y}</b><br>%{x}<br><extra></extra>'
         ))
         
-        # Zonas de qualidade do ar com cores
-        fig_aqi.add_hrect(y0=0, y1=50, fillcolor="green", opacity=0.1, annotation_text="Boa", annotation_position="top left")
-        fig_aqi.add_hrect(y0=51, y1=100, fillcolor="yellow", opacity=0.1, annotation_text="Moderada", annotation_position="top left")
-        fig_aqi.add_hrect(y0=101, y1=150, fillcolor="orange", opacity=0.1, annotation_text="Insalubre (Sensíveis)", annotation_position="top left")
-        fig_aqi.add_hrect(y0=151, y1=200, fillcolor="red", opacity=0.1, annotation_text="Insalubre", annotation_position="top left")
-        fig_aqi.add_hrect(y0=201, y1=300, fillcolor="purple", opacity=0.1, annotation_text="Muito Insalubre", annotation_position="top left")
-        
-        # Linhas de referência principais
-        fig_aqi.add_hline(y=50, line_dash="dash", line_color="green", line_width=2)
-        fig_aqi.add_hline(y=100, line_dash="dash", line_color="orange", line_width=2)
-        fig_aqi.add_hline(y=150, line_dash="dash", line_color="red", line_width=2)
+        # Zonas de qualidade do ar
+        fig_aqi.add_hrect(y0=0, y1=50, fillcolor="green", opacity=0.1, annotation_text="Boa")
+        fig_aqi.add_hrect(y0=51, y1=100, fillcolor="yellow", opacity=0.1, annotation_text="Moderada")
+        fig_aqi.add_hrect(y0=101, y1=150, fillcolor="orange", opacity=0.1, annotation_text="Insalubre (Sensíveis)")
+        fig_aqi.add_hrect(y0=151, y1=200, fillcolor="red", opacity=0.1, annotation_text="Insalubre")
         
         fig_aqi.update_layout(
-            title="🌫️ Evolução da Qualidade do Ar - Comparação de Índices",
+            title="🌫️ Evolução da Qualidade do Ar",
             xaxis_title="Data/Hora",
             yaxis_title="Índice AQI",
             height=500,
-            hovermode='x unified',
-            showlegend=True
+            hovermode='x unified'
         )
         st.plotly_chart(fig_aqi, use_container_width=True)
-        
-        # Gráfico adicional: Distribuição de poluentes
-        if 'main_pollutant_us' in air_df.columns:
-            pollutant_counts = air_df['main_pollutant_us'].value_counts()
-            fig_pollutants = px.pie(
-                values=pollutant_counts.values,
-                names=pollutant_counts.index,
-                title="🏭 Distribuição dos Principais Poluentes",
-                color_discrete_sequence=px.colors.qualitative.Set3
-            )
-            fig_pollutants.update_layout(height=400)
-            st.plotly_chart(fig_pollutants, use_container_width=True)
 
-def create_comparative_analysis(weather_df, air_df):
-    """Análise comparativa e correlações."""
-    st.header("📊 Análise Inteligente e Tendências")
-    
-    if weather_df.empty and air_df.empty:
-        st.warning("Nenhum dado disponível para análise comparativa.")
-        return
-    
-    # Análise de tendências
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📈 Tendências Meteorológicas")
-        if not weather_df.empty and len(weather_df) > 1:
-            # Calcular tendências
-            temp_trend = weather_df['temperature'].iloc[0] - weather_df['temperature'].iloc[-1]
-            humidity_trend = weather_df['humidity'].iloc[0] - weather_df['humidity'].iloc[-1]
-            pressure_trend = weather_df['pressure'].iloc[0] - weather_df['pressure'].iloc[-1]
-            
-            # Métricas com análise
-            st.metric(
-                "🌡️ Tendência Temperatura", 
-                f"{temp_trend:+.1f}°C",
-                delta="Últimos registros" if abs(temp_trend) > 1 else "Estável"
-            )
-            st.metric(
-                "💧 Tendência Umidade", 
-                f"{humidity_trend:+.0f}%",
-                delta="Variação significativa" if abs(humidity_trend) > 10 else "Normal"
-            )
-            st.metric(
-                "🌬️ Tendência Pressão", 
-                f"{pressure_trend:+.0f} hPa",
-                delta="Mudança de tempo" if abs(pressure_trend) > 5 else "Estável"
-            )
-            
-            # Estatísticas resumidas
-            st.markdown("**📊 Resumo Estatístico:**")
-            weather_stats = {
-                "Temp. Média": f"{weather_df['temperature'].mean():.1f}°C",
-                "Temp. Máxima": f"{weather_df['temperature'].max():.1f}°C", 
-                "Temp. Mínima": f"{weather_df['temperature'].min():.1f}°C",
-                "Umidade Média": f"{weather_df['humidity'].mean():.0f}%",
-                "Vento Médio": f"{weather_df['wind_speed'].mean():.1f} m/s"
-            }
-            
-            for key, value in weather_stats.items():
-                st.text(f"• {key}: {value}")
-    
-    with col2:
-        st.subheader("🌫️ Análise de Qualidade do Ar")
-        if not air_df.empty and len(air_df) > 1:
-            # Análise da qualidade do ar
-            current_aqi = air_df.iloc[0]['aqi_us']
-            avg_aqi = air_df['aqi_us'].mean()
-            max_aqi = air_df['aqi_us'].max()
-            
-            # Status atual detalhado
-            status, color = get_air_quality_status(current_aqi)
-            st.markdown(f"**Status Atual:** {status}")
-            
-            st.metric(
-                "📊 AQI Médio", 
-                f"{avg_aqi:.0f}",
-                delta=f"Máximo: {max_aqi}"
-            )
-            
-            # Análise de poluentes
-            if 'main_pollutant_us' in air_df.columns:
-                main_pollutant = air_df['main_pollutant_us'].mode().iloc[0]
-                pollutant_freq = air_df['main_pollutant_us'].value_counts()
-                
-                st.markdown("**🏭 Análise de Poluentes:**")
-                st.text(f"• Principal poluente: {main_pollutant.upper()}")
-                
-                for pollutant, count in pollutant_freq.head(3).items():
-                    percentage = (count / len(air_df)) * 100
-                    st.text(f"• {pollutant.upper()}: {percentage:.0f}% dos registros")
-            
-            # Comparação de índices
-            aqi_us_avg = air_df['aqi_us'].mean()
-            aqi_cn_avg = air_df['aqi_cn'].mean()
-            st.markdown("**🌍 Comparação Internacional:**")
-            st.text(f"• Média AQI US: {aqi_us_avg:.0f}")
-            st.text(f"• Média AQI China: {aqi_cn_avg:.0f}")
-    
-    st.markdown("---")
-    
-    # Sistema de alertas inteligente
-    st.subheader("🚨 Sistema de Alertas Inteligente")
+def create_alerts_section(weather_df, air_df):
+    """Sistema de alertas inteligente."""
+    st.header("🚨 Sistema de Alertas Inteligente")
     
     alerts = []
     recommendations = []
@@ -581,20 +431,27 @@ def create_comparative_analysis(weather_df, air_df):
         
         if latest_temp > 35:
             alerts.append("🌡️ **ALERTA CALOR:** Temperatura extrema detectada!")
-            recommendations.append("• Evite exposição ao sol entre 10h-16h")
-            recommendations.append("• Mantenha-se hidratado")
+            recommendations.extend([
+                "• Evite exposição ao sol entre 10h-16h",
+                "• Mantenha-se hidratado",
+                "• Use protetor solar e roupas leves"
+            ])
         elif latest_temp < 5:
             alerts.append("❄️ **ALERTA FRIO:** Temperatura muito baixa!")
-            recommendations.append("• Use roupas adequadas para o frio")
-            recommendations.append("• Proteja extremidades do corpo")
+            recommendations.extend([
+                "• Use roupas adequadas para o frio",
+                "• Proteja extremidades do corpo"
+            ])
         
         if latest_humidity > 80:
             alerts.append("💧 **UMIDADE ALTA:** Desconforto térmico possível")
             recommendations.append("• Use ventilação adequada em ambientes fechados")
         elif latest_humidity < 30:
             alerts.append("🏜️ **AR SECO:** Umidade muito baixa")
-            recommendations.append("• Use umidificador ou recipientes com água")
-            recommendations.append("• Hidrate-se mais frequentemente")
+            recommendations.extend([
+                "• Use umidificador ou recipientes com água",
+                "• Hidrate-se mais frequentemente"
+            ])
         
         if latest_wind > 15:
             alerts.append("💨 **VENTO FORTE:** Ventos intensos detectados")
@@ -603,17 +460,20 @@ def create_comparative_analysis(weather_df, air_df):
     # Alertas de qualidade do ar
     if not air_df.empty:
         latest_aqi = air_df.iloc[0]['aqi_us']
-        main_pollutant = air_df.iloc[0]['main_pollutant_us']
         
         if latest_aqi > 200:
             alerts.append("🚨 **EMERGÊNCIA:** Qualidade do ar muito perigosa!")
-            recommendations.append("• Evite atividades ao ar livre")
-            recommendations.append("• Use máscaras N95 se precisar sair")
-            recommendations.append("• Mantenha janelas fechadas")
+            recommendations.extend([
+                "• Evite atividades ao ar livre",
+                "• Use máscaras N95 se precisar sair",
+                "• Mantenha janelas fechadas"
+            ])
         elif latest_aqi > 150:
             alerts.append("🔴 **ALERTA CRÍTICO:** Qualidade do ar insalubre!")
-            recommendations.append("• Limite atividades ao ar livre")
-            recommendations.append("• Grupos sensíveis devem ficar em casa")
+            recommendations.extend([
+                "• Limite atividades ao ar livre",
+                "• Grupos sensíveis devem ficar em casa"
+            ])
         elif latest_aqi > 100:
             alerts.append("🟠 **ATENÇÃO:** Qualidade inadequada para sensíveis")
             recommendations.append("• Crianças e idosos devem evitar exercícios externos")
@@ -640,85 +500,153 @@ def create_comparative_analysis(weather_df, air_df):
     if not alerts:
         st.info("ℹ️ **Condições normais.** Continue monitorando regularmente.")
 
+def show_welcome_page():
+    """Página de boas-vindas e configuração."""
+    st.title("🌍 Climate Analytics")
+    st.markdown("### Sistema Profissional de Monitoramento Climático")
+    st.markdown("---")
+    
+    st.info("🚀 **Configure suas credenciais para começar a análise climática**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### 🔑 APIs Necessárias
+        
+        **OpenWeatherMap API** (Gratuita)
+        - Dados meteorológicos em tempo real
+        - Previsões de até 5 dias
+        - Acesse: https://openweathermap.org/api
+        
+        **IQAir AirVisual API** (Gratuita)
+        - Qualidade do ar global
+        - Índices AQI US e China
+        - Acesse: https://www.iqair.com/air-pollution-data-api
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### ⚙️ Como Configurar
+        
+        1. **Obtenha suas chaves das APIs**
+        2. **Execute no terminal:**
+        ```bash
+        python setup_credentials.py
+        ```
+        3. **Ou crie arquivo `.env`:**
+        ```env
+        OPENWEATHER_API_KEY=sua_chave_aqui
+        AIRVISUAL_API_KEY=sua_chave_aqui
+        ```
+        """)
+    
+    if st.button("🔄 Verificar Credenciais", type="primary"):
+        st.info("♻️ Atualize a página para verificar as credenciais configuradas.")
+
 def show_dashboard():
     """Dashboard principal com análises completas."""
     st.title("🌍 Climate Analytics")
     st.markdown("### Monitoramento Climático e Qualidade do Ar em Tempo Real")
+      # Detecção automática de localização
+    if 'user_location' not in st.session_state:
+        with st.spinner("🌍 Detectando sua localização..."):
+            st.session_state.user_location = get_user_location()
+            
+            # Adicionar cidade detectada às opções automaticamente
+            detected_city_key = add_detected_city_to_options(st.session_state.user_location)
+            st.session_state.selected_city = detected_city_key
+            
+            # Tentar coletar dados automaticamente para a cidade detectada
+            if auto_collect_data_for_detected_city(detected_city_key, st.session_state.user_location):
+                st.success(f"🚀 Coletando dados para {detected_city_key} em segundo plano...")
     
-    # Seção de seleção de localização
-    st.markdown("---")
+    # Seleção de cidade
+    st.markdown("### 📍 Seleção de Localização")
+    
     col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
-        st.subheader("� Seleção de Localização")
+        # Detecção automática
+        location = st.session_state.user_location
+        st.info(f"📡 **Localização Detectada:** {location['city']}, {location['country']}")
         
-        # Detectar localização do usuário
-        if st.button("🎯 Detectar Minha Localização"):
-            with st.spinner("Detectando sua localização..."):
-                user_location = get_user_location()
-                st.session_state.user_location = user_location
-                st.success(f"� Localização detectada: {user_location['city']}, {user_location['country']}")
+        if st.button("🔄 Usar Localização Atual"):
+            detected_city_key = add_detected_city_to_options(location)
+            st.session_state.selected_city = detected_city_key
+            
+            # Coletar dados automaticamente
+            if auto_collect_data_for_detected_city(detected_city_key, location):
+                st.success(f"🚀 Coletando dados para {detected_city_key}...")
+            st.balloons()
     
-    with col2:
-        # Seleção manual de cidade
+    with col2:        # Seleção manual
         available_cities = get_available_cities()
-          # Valor padrão baseado na localização do usuário se disponível
-        default_city = "São Paulo, BR"
-        if 'user_location' in st.session_state:
-            user_loc = st.session_state.user_location
-            detected_city = f"{user_loc['city']}, {user_loc['country']}"
-            if detected_city in available_cities:
-                default_city = detected_city
+        
+        # Obter cidade selecionada de forma segura
+        current_selected = st.session_state.get('selected_city', '')
+        try:
+            # Tentar encontrar a cidade na lista
+            if current_selected in available_cities:
+                default_index = list(available_cities.keys()).index(current_selected)
+            else:
+                default_index = 0
+        except (ValueError, IndexError):
+            default_index = 0
         
         selected_city = st.selectbox(
-            "🌍 Escolher Cidade:",
+            "🏙️ Ou escolha uma cidade:",
             options=list(available_cities.keys()),
-            index=list(available_cities.keys()).index(default_city) if default_city in available_cities else 0,
-            help="Selecione uma cidade para ver dados específicos"
+            index=default_index
         )
-        
-        # Opção de busca livre
-        st.markdown("**Ou digite qualquer cidade:**")
-        custom_city = st.text_input(
-            "🔍 Buscar cidade:",
-            placeholder="Ex: Londres, UK ou Paris, France",
-            help="Digite o nome da cidade em inglês, seguido do código do país"
-        )
-          # Se uma cidade customizada foi digitada, usar ela
-        if custom_city and custom_city.strip():
-            selected_city = custom_city.strip()
-            # Tentar obter coordenadas via geocoding (simplificado)
-            st.info(f"🔍 Buscando dados para: {selected_city}")
-        
         st.session_state.selected_city = selected_city
+          # Campo de busca livre
+        custom_city = st.text_input("🔍 Ou digite qualquer cidade:", placeholder="Ex: Cidade, País")
+        if custom_city:
+            st.session_state.selected_city = custom_city
+            st.info(f"Cidade personalizada: {custom_city}")
     
     with col3:
-        # Botão para coletar dados da cidade selecionada
-        if st.button("🔄 Coletar Dados\nda Cidade", type="primary"):
-            with st.spinner(f"🌐 Coletando dados para {selected_city}..."):
-                # Verificar se é uma cidade pré-definida ou customizada
-                if selected_city in available_cities:
-                    city_data = available_cities[selected_city]
-                    result = os.system(f"python data_collector.py --city=\"{selected_city}\" --lat={city_data['lat']} --lon={city_data['lon']}")
-                else:
-                    # Para cidades customizadas, usar apenas o nome da cidade
-                    result = os.system(f"python data_collector.py --city=\"{selected_city}\"")
-                
-                if result == 0:
-                    st.success("✅ Dados coletados com sucesso! Aguarde alguns segundos e os dados serão atualizados.")
+        # Botão para coletar dados
+        current_city = st.session_state.get('selected_city', selected_city)
+        if st.button("🔄 Coletar Dados", type="primary"):
+            # Determinar coordenadas da cidade
+            if current_city in available_cities:
+                city_data = available_cities[current_city]
+                lat, lon = city_data['lat'], city_data['lon']
+            elif 'custom_city_data' in st.session_state and st.session_state.custom_city_data['name'] == current_city:
+                # Usar dados da cidade detectada automaticamente
+                lat, lon = st.session_state.custom_city_data['lat'], st.session_state.custom_city_data['lon']
+            else:
+                # Para cidades totalmente customizadas, tentar obter coordenadas (fallback para São Paulo)
+                lat, lon = -23.5505, -46.6333
+                st.warning(f"⚠️ Coordenadas padrão usadas para '{current_city}'. Para melhores resultados, use uma cidade da lista.")
+            
+            with st.spinner(f"🌐 Coletando dados para {current_city}..."):
+                if collect_data_for_city(current_city, lat, lon):
+                    st.success("✅ Dados coletados com sucesso!")
                     st.balloons()
-                    time.sleep(2)  # Aguarda um pouco para o banco ser atualizado
+                    time.sleep(2)
                 else:
                     st.error("❌ Erro ao coletar dados. Verifique suas credenciais.")
-                    st.info("💡 Dica: Verifique se suas chaves de API estão configuradas corretamente.")
+                    st.info("💡 Dica: Verifique se suas chaves de API estão configuradas no arquivo .env")
     
     st.markdown("---")
-    
-    # Carregar dados para a cidade selecionada
-    with st.spinner(f"🔄 Carregando dados para {selected_city}..."):
-        weather_df, air_df = load_climate_data(selected_city)
-    
-    # Status dos dados com informações atualizadas
+      # Carregar dados para a cidade selecionada
+    with st.spinner(f"🔄 Carregando dados para {current_city}..."):
+        weather_df, air_df = load_climate_data(current_city)
+        
+        # Verificar se há dados para a cidade selecionada
+        if weather_df.empty and air_df.empty:
+            st.warning(f"⚠️ **Nenhum dado encontrado para '{current_city}'**")
+            st.info("💡 **Sugestões:**")
+            st.markdown("- Clique em '🔄 Coletar Dados' para obter dados desta cidade")
+            st.markdown("- Ou selecione uma cidade que já possui dados (São Paulo)")
+            
+            # Tentar carregar dados gerais como fallback
+            st.info("📊 Mostrando dados disponíveis no sistema:")
+            weather_df, air_df = load_climate_data(None)  # Carregar todos os dados
+      # Status dos dados
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("📊 Registros Meteorológicos", len(weather_df))
@@ -726,32 +654,29 @@ def show_dashboard():
         st.metric("🌫️ Registros Qualidade do Ar", len(air_df))
     with col3:
         if not weather_df.empty:
-            latest_timestamp = weather_df.iloc[0]['timestamp']
-            # Remover timezone para comparação
-            if latest_timestamp.tzinfo:
-                latest_timestamp = latest_timestamp.replace(tzinfo=None)
-            hours_since = (datetime.now() - latest_timestamp).total_seconds() / 3600
-            st.metric("⏰ Última Coleta", f"{hours_since:.1f}h atrás")
+            latest_time = weather_df.iloc[0]['timestamp']
+            hours_ago = (datetime.now(latest_time.tz) - latest_time).total_seconds() / 3600
+            st.metric("⏰ Última Coleta", f"{hours_ago:.1f}h atrás")
         else:
             st.metric("⏰ Última Coleta", "N/A")
     with col4:
-        st.metric("🌍 Localização Ativa", selected_city)
-    
-    # Informações adicionais da localização
-    if selected_city in available_cities:
-        city_info = available_cities[selected_city]
-        st.markdown(f"""
-        **📍 Coordenadas:** {city_info['lat']:.4f}, {city_info['lon']:.4f}  
-        **🗺️ Região:** {selected_city}
-        """)
-    
-    st.markdown("---")
+        # Mostrar cidade dos dados reais
+        if not weather_df.empty:
+            actual_city = weather_df.iloc[0]['city']
+            actual_country = weather_df.iloc[0]['country']
+            data_location = f"{actual_city}, {actual_country}"
+            if data_location != current_city:
+                st.metric("🌍 Dados de", data_location, delta="(diferente da selecionada)")
+            else:
+                st.metric("🌍 Localização", current_city)
+        else:
+            st.metric("🌍 Localização Selecionada", current_city)
     
     # Tabs principais
     tab1, tab2, tab3, tab4 = st.tabs([
         "🌡️ Análise Meteorológica", 
         "🌫️ Qualidade do Ar", 
-        "📊 Análise Comparativa",
+        "🚨 Alertas e Análises",
         "📋 Dados Brutos"
     ])
     
@@ -762,7 +687,7 @@ def show_dashboard():
         create_air_quality_analysis(air_df)
     
     with tab3:
-        create_comparative_analysis(weather_df, air_df)
+        create_alerts_section(weather_df, air_df)
     
     with tab4:
         st.header("📋 Dados Brutos para Análise")
@@ -770,36 +695,136 @@ def show_dashboard():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader(f"🌡️ Dados Meteorológicos - {selected_city}")
+            st.subheader("🌡️ Dados Meteorológicos")
             if not weather_df.empty:
                 st.dataframe(weather_df, use_container_width=True)
-                
-                # Download dos dados
                 csv_weather = weather_df.to_csv(index=False)
                 st.download_button(
-                    f"📥 Baixar Dados Meteorológicos - {selected_city} (CSV)",
+                    "📥 Baixar Dados Meteorológicos (CSV)",
                     csv_weather,
-                    f"dados_meteorologicos_{selected_city.replace(', ', '_')}.csv",
+                    f"meteorologia_{current_city.replace(', ', '_')}.csv",
                     "text/csv"
                 )
             else:
-                st.info(f"Nenhum dado meteorológico disponível para {selected_city}")
+                st.info("Nenhum dado meteorológico disponível")
         
         with col2:
-            st.subheader(f"🌫️ Dados de Qualidade do Ar - {selected_city}")
+            st.subheader("🌫️ Dados de Qualidade do Ar")
             if not air_df.empty:
                 st.dataframe(air_df, use_container_width=True)
-                
-                # Download dos dados
                 csv_air = air_df.to_csv(index=False)
                 st.download_button(
-                    f"📥 Baixar Dados Qualidade do Ar - {selected_city} (CSV)",
+                    "📥 Baixar Dados Qualidade do Ar (CSV)",
                     csv_air,
-                    f"dados_qualidade_ar_{selected_city.replace(', ', '_')}.csv",
+                    f"qualidade_ar_{current_city.replace(', ', '_')}.csv",
                     "text/csv"
                 )
             else:
-                st.info(f"Nenhum dado de qualidade do ar disponível para {selected_city}")
+                st.info("Nenhum dado de qualidade do ar disponível")
+
+def get_dynamic_cities():
+    """Obtém lista de cidades disponíveis incluindo cidades detectadas dinamicamente."""
+    # Cidades base pré-definidas
+    base_cities = {
+        'São Paulo, BR': {'lat': -23.5505, 'lon': -46.6333, 'country': 'BR'},
+        'Rio de Janeiro, BR': {'lat': -22.9068, 'lon': -43.1729, 'country': 'BR'},
+        'Brasília, BR': {'lat': -15.8267, 'lon': -47.9218, 'country': 'BR'},
+        'Salvador, BR': {'lat': -12.9714, 'lon': -38.5124, 'country': 'BR'},
+        'Fortaleza, BR': {'lat': -3.7319, 'lon': -38.5267, 'country': 'BR'},
+        'Belo Horizonte, BR': {'lat': -19.9167, 'lon': -43.9345, 'country': 'BR'},
+        'Manaus, BR': {'lat': -3.1190, 'lon': -60.0217, 'country': 'BR'},
+        'Curitiba, BR': {'lat': -25.4284, 'lon': -49.2733, 'country': 'BR'},
+        'Recife, BR': {'lat': -8.0476, 'lon': -34.8770, 'country': 'BR'},
+        'Porto Alegre, BR': {'lat': -30.0346, 'lon': -51.2177, 'country': 'BR'},
+        'Itaperuna, Brazil': {'lat': -21.2044, 'lon': -41.8891, 'country': 'BR'},
+        'Buenos Aires, AR': {'lat': -34.6118, 'lon': -58.3960, 'country': 'AR'},
+        'Córdoba, AR': {'lat': -31.4201, 'lon': -64.1888, 'country': 'AR'},
+        'Lima, PE': {'lat': -12.0464, 'lon': -77.0428, 'country': 'PE'},
+        'Santiago, CL': {'lat': -33.4489, 'lon': -70.6693, 'country': 'CL'},
+        'Bogotá, CO': {'lat': 4.7110, 'lon': -74.0721, 'country': 'CO'},
+        'Caracas, VE': {'lat': 10.4806, 'lon': -66.9036, 'country': 'VE'},
+        'New York, US': {'lat': 40.7128, 'lon': -74.0060, 'country': 'US'},
+        'London, UK': {'lat': 51.5074, 'lon': -0.1278, 'country': 'GB'},
+        'Paris, FR': {'lat': 48.8566, 'lon': 2.3522, 'country': 'FR'},
+        'Tokyo, JP': {'lat': 35.6762, 'lon': 139.6503, 'country': 'JP'},
+        'Beijing, CN': {'lat': 39.9042, 'lon': 116.4074, 'country': 'CN'},
+        'Mumbai, IN': {'lat': 19.0760, 'lon': 72.8777, 'country': 'IN'},
+        'Sydney, AU': {'lat': -33.8688, 'lon': 151.2093, 'country': 'AU'},
+    }
+    
+    # Adicionar cidades dinâmicas do session_state
+    if 'dynamic_cities' in st.session_state:
+        base_cities.update(st.session_state.dynamic_cities)
+    
+    return base_cities
+
+def add_detected_city_to_options(location_data):
+    """Adiciona uma cidade detectada às opções disponíveis."""
+    city_key = f"{location_data['city']}, {location_data['country_code']}"
+    
+    # Inicializar se não existir
+    if 'dynamic_cities' not in st.session_state:
+        st.session_state.dynamic_cities = {}
+    
+    # Adicionar cidade se não existir
+    if city_key not in st.session_state.dynamic_cities:
+        st.session_state.dynamic_cities[city_key] = {
+            'lat': location_data['lat'],
+            'lon': location_data['lon'],
+            'country': location_data['country_code'],
+            'detected': True  # Marca como cidade detectada automaticamente
+        }
+        logger.info(f"Cidade {city_key} adicionada dinamicamente às opções")
+    
+    return city_key
+
+def auto_collect_data_for_detected_city(city_key, location_data):
+    """Coleta automaticamente dados para uma cidade detectada se não existir no banco."""
+    try:
+        # Verificar se já existem dados para esta cidade
+        if not os.path.exists(Config.DATABASE_PATH):
+            return False
+            
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        city_name = city_key.split(',')[0].strip()
+        
+        # Verificar dados meteorológicos
+        weather_check = pd.read_sql_query(
+            "SELECT COUNT(*) as count FROM weather_data WHERE city LIKE ?",
+            conn, params=[f'%{city_name}%']
+        )
+        
+        # Verificar dados de qualidade do ar  
+        air_check = pd.read_sql_query(
+            "SELECT COUNT(*) as count FROM air_quality_data WHERE city LIKE ?",
+            conn, params=[f'%{city_name}%']
+        )
+        
+        conn.close()
+        
+        # Se não há dados, coletar automaticamente
+        if weather_check.iloc[0]['count'] == 0 and air_check.iloc[0]['count'] == 0:
+            logger.info(f"Coletando dados automaticamente para {city_key}")
+            
+            # Coletar dados usando subprocess para não travar a interface
+            import subprocess
+            cmd = [
+                'python', 'data_collector.py',
+                f'--city={city_key}',
+                f'--lat={location_data["lat"]}',
+                f'--lon={location_data["lon"]}',
+                f'--country={location_data["country_code"]}'
+            ]
+            
+            # Executar em background
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+            
+    except Exception as e:
+        logger.error(f"Erro ao verificar/coletar dados para {city_key}: {e}")
+        return False
+    
+    return False
 
 def main():
     """Função principal."""
@@ -819,383 +844,119 @@ def main():
         
         st.markdown("---")
         
-        # Localização atual
-        if 'selected_city' in st.session_state:
-            st.markdown("### 📍 Localização Ativa")
-            st.write(f"**🌍 Cidade:** {st.session_state.selected_city}")
-            
-            if 'user_location' in st.session_state:
-                user_loc = st.session_state.user_location
-                st.write(f"**🎯 Detectada:** {user_loc['city']}, {user_loc['country']}")
-        
-        st.markdown("---")
-        
         # Status do sistema
         st.markdown("### 📊 Status do Sistema")
-        db_exists = os.path.exists(Config.DATABASE_PATH) if hasattr(Config, 'DATABASE_PATH') else False
-        st.write(f"**Banco de dados:** {'✅ Conectado' if db_exists else '❌ Não encontrado'}")
+        try:
+            db_exists = os.path.exists(Config.DATABASE_PATH)
+            st.write(f"**Banco de dados:** {'✅ Conectado' if db_exists else '❌ Não encontrado'}")
+        except:
+            st.write("**Banco de dados:** ❌ Erro ao verificar")
+        
         st.write(f"**Credenciais:** {'✅ Válidas' if has_credentials else '❌ Pendentes'}")
-        st.write(f"**Detecção de Localização:** {'✅ Ativa' if 'user_location' in st.session_state else '⚙️ Disponível'}")
+        
+        # Informações da localização ativa
+        if 'selected_city' in st.session_state:
+            st.markdown("---")
+            st.markdown("### 📍 Localização Ativa")
+            st.info(f"🎯 {st.session_state.selected_city}")
+            
+            if st.button("🔄 Resetar Localização"):
+                if 'user_location' in st.session_state:
+                    del st.session_state.user_location
+                if 'selected_city' in st.session_state:
+                    del st.session_state.selected_city
+                st.success("Localização resetada! Atualize a página.")
         
         st.markdown("---")
-        
-        # Ações rápidas
+          # Ações rápidas
         st.markdown("### 🔧 Ações Rápidas")
-        
-        # Coleta global de dados
-        if st.button("🌍 Coletar Dados Globais", type="secondary"):
-            with st.spinner("Coletando dados para todas as cidades..."):
-                # Coletar dados para as principais cidades
+        if st.button("🔄 Coletar Dados Gerais"):
+            with st.spinner("Coletando dados..."):
                 result = os.system("python data_collector.py")
                 if result == 0:
-                    st.success("✅ Dados globais coletados!")
+                    st.success("✅ Dados coletados!")
                 else:
-                    st.error("❌ Erro na coleta global")
-          # Reset de localização
-        if st.button("🔄 Resetar Localização"):
+                    st.error("❌ Erro na coleta")
+        
+        if st.button("🌍 Resetar Localização"):
+            # Limpar cache de localização para re-detectar
             if 'user_location' in st.session_state:
                 del st.session_state.user_location
             if 'selected_city' in st.session_state:
                 del st.session_state.selected_city
-            st.success("Localização resetada! Atualize a página para ver as alterações.")
+            if 'dynamic_cities' in st.session_state:
+                del st.session_state.dynamic_cities
+            st.success("Localização resetada! Atualize a página para re-detectar.")
         
-        st.markdown("---")
+        # Teste com localização específica
+        with st.expander("🧪 Teste de Localização"):
+            test_city = st.text_input("Cidade para teste:")
+            test_country = st.text_input("País para teste:")
+            test_lat = st.number_input("Latitude:", value=0.0, format="%.4f")
+            test_lon = st.number_input("Longitude:", value=0.0, format="%.4f")
+            
+            if st.button("🔬 Aplicar Localização de Teste"):
+                if test_city and test_country:
+                    st.session_state.user_location = {
+                        'city': test_city,
+                        'country': test_country,
+                        'country_code': test_country[:2].upper(),
+                        'lat': test_lat,
+                        'lon': test_lon,
+                        'region': test_city
+                    }
+                    # Adicionar às cidades dinâmicas
+                    test_key = add_detected_city_to_options(st.session_state.user_location)
+                    st.session_state.selected_city = test_key
+                    st.success(f"Localização de teste aplicada: {test_city}, {test_country}")
+                    st.info("Atualize a página para ver as alterações")
         
         # Informações do projeto
+        st.markdown("---")
         st.markdown("### ℹ️ Sobre o Projeto")
         st.markdown("""
-        **Climate Analytics v2.0**
+        **Objetivo:** Monitoramento e análise de mudanças climáticas e qualidade do ar
         
-        **🎯 Funcionalidades:**
-        - 🌍 Detecção automática de localização
-        - 🏙️ Monitoramento multi-cidades
-        - 📊 Análises avançadas
-        - 🚨 Sistema de alertas inteligente
-        - 📈 Visualizações interativas
-        - 📥 Export de dados
+        **APIs Utilizadas:**
+        - OpenWeatherMap
+        - IQAir AirVisual
         
-        **🔗 APIs Utilizadas:**
-        - OpenWeatherMap (Meteorologia)
-        - IQAir AirVisual (Qualidade do Ar)
-        - IP-API (Geolocalização)
+        **Funcionalidades:**
+        - Detecção automática de localização
+        - Seleção manual de cidades
+        - Busca livre por qualquer cidade
+        - Coleta automática de dados
+        - Análises estatísticas avançadas
+        - Visualizações interativas
+        - Sistema de alertas inteligente
+        - Export de dados
         """)
         
-        # Link para melhorias
-        with st.expander("� Melhorias Futuras"):
+        # Roadmap de melhorias
+        with st.expander("🚀 Melhorias Implementadas"):
             st.markdown("""
-            **📋 Roadmap:**
-            - [ ] Previsões de 7 dias
-            - [ ] Mapas interativos
-            - [ ] Comparação entre cidades
-            - [ ] Alertas por email/SMS
-            - [ ] API própria
-            - [ ] Machine Learning para previsões            - [ ] Dashboard mobile
-            """)
-        
-        # Status das melhorias implementadas
-        with st.expander("✅ Melhorias Implementadas"):
-            st.markdown("""
-            **🚀 Versão 2.0 - Funcionalidades Adicionadas:**
-            - ✅ Detecção automática de localização via IP
-            - ✅ Busca livre por qualquer cidade do mundo
-            - ✅ Seleção manual entre cidades principais
-            - ✅ Eliminação completa de loops/reloads
-            - ✅ Visualizações avançadas com zonas de conforto
-            - ✅ Sistema de alertas inteligente contextual
-            - ✅ Análise comparativa de índices AQI
-            - ✅ Gráficos interativos com tooltips
-            - ✅ Export de dados em CSV
-            - ✅ Interface responsiva e moderna
-            - ✅ Tratamento robusto de erros
-            - ✅ Cache otimizado para performance
+            ✅ **Concluído:**
+            - Detecção automática de localização via IP
+            - Seleção manual de cidades globais
+            - Busca livre por qualquer cidade
+            - Coleta de dados específica por cidade
+            - Gráficos interativos com zonas de referência
+            - Sistema de alertas inteligente
+            - Interface responsiva e moderna
+            - Remoção de loops/recarregamentos
+            - Download de dados em CSV
             
-            **🔧 Melhorias Técnicas:**
-            - ✅ Código limpo e documentado
-            - ✅ Tratamento de exceções
-            - ✅ Validação de dados
-            - ✅ Parsing robusto de timestamps
-            - ✅ Integração real com APIs
-            - ✅ Sistema de feedback ao usuário
+            🔄 **Próximas melhorias:**
+            - Previsões meteorológicas
+            - Mapas interativos
+            - Histórico de tendências
+            - Relatórios automatizados
+            - Integração com mais APIs
+            - Notificações push
+            - Dashboard mobile
             """)
     
     # Conteúdo principal
-    if check_credentials():
-        show_dashboard()
-    else:
-        show_welcome_page()
-
-if __name__ == "__main__":
-    main()
-
-def load_real_data():
-    """Carrega dados REAIS do banco de dados SQLite."""
-    try:
-        if not os.path.exists(Config.DATABASE_PATH):
-            st.warning("Banco de dados não encontrado. Execute o coletor de dados primeiro.")
-            return pd.DataFrame(), pd.DataFrame()
-            
-        conn = sqlite3.connect(Config.DATABASE_PATH)
-        
-        # Dados meteorológicos - usar colunas separadas
-        weather_query = """
-        SELECT timestamp, temperature, humidity, pressure, wind_speed, description, city, country
-        FROM weather_data 
-        WHERE timestamp >= datetime('now', '-7 days')
-        ORDER BY timestamp DESC
-        """
-        weather_df = pd.read_sql_query(weather_query, conn)
-        
-        # Dados de qualidade do ar - usar colunas separadas
-        air_query = """
-        SELECT timestamp, aqi_us as aqi, temperature, pressure, humidity, wind_speed, city, country
-        FROM air_quality_data 
-        WHERE timestamp >= datetime('now', '-7 days')
-        ORDER BY timestamp DESC
-        """
-        air_df = pd.read_sql_query(air_query, conn)
-        
-        conn.close()
-        
-        return weather_df, air_df
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        return pd.DataFrame(), pd.DataFrame()
-
-def check_credentials():
-    """Verifica se as credenciais estão configuradas."""
-    try:
-        # Verificação simples se o arquivo .env existe e tem as chaves necessárias
-        if not os.path.exists('.env'):
-            return False
-        
-        with open('.env', 'r') as f:
-            env_content = f.read()
-            
-        # Verificar se as chaves essenciais estão presentes
-        has_weather_key = 'OPENWEATHER_API_KEY=' in env_content
-        has_air_key = 'AIRVISUAL_API_KEY=' in env_content
-        
-        return has_weather_key and has_air_key
-    except Exception:
-        return False
-
-def show_welcome_page():
-    """Mostra página de boas-vindas para configuração de credenciais."""
-    st.title("🌍 Climate Analytics")
-    st.markdown("---")
-    
-    st.info("🚀 **Bem-vindo ao Climate Analytics!** Configure suas credenciais para começar.")
-    
-    st.markdown("""
-    ### 📋 Pré-requisitos
-    Para usar este dashboard, você precisa de:
-    
-    1. **🔑 Chave da API OpenWeatherMap** (gratuita)
-       - Acesse: https://openweathermap.org/api
-       - Crie uma conta e obtenha sua API key
-    
-    2. **🌫️ Chave da API AirVisual** (gratuita)
-       - Acesse: https://www.iqair.com/air-pollution-data-api
-       - Registre-se e obtenha sua API key
-    
-    ### ⚙️ Configuração
-    Execute o comando abaixo no terminal para configurar suas credenciais:
-    ```bash
-    python setup_credentials.py
-    ```
-    
-    Ou crie um arquivo `.env` na raiz do projeto com:
-    ```
-    OPENWEATHER_API_KEY=sua_chave_aqui
-    AIRVISUAL_API_KEY=sua_chave_aqui    ```
-    """)
-    
-    if st.button("🔄 Verificar Credenciais"):
-        st.info("♻️ Atualize a página para verificar as credenciais.")
-
-def create_weather_charts(weather_df):
-    """Cria gráficos dos dados meteorológicos."""
-    if weather_df.empty:
-        st.warning("Nenhum dado meteorológico disponível. Colete dados primeiro.")
-        return
-    
-    # Fazer uma cópia para não alterar o original
-    df = weather_df.copy()
-    
-    # Converter timestamp para datetime com formato flexível
-    try:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
-    except:
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-    
-    # Gráfico de temperatura
-    if 'temperature' in df.columns:
-        fig_temp = px.line(
-            df, x='timestamp', y='temperature',
-            title='🌡️ Temperatura ao Longo do Tempo',
-            labels={'temperature': 'Temperatura (°C)', 'timestamp': 'Data/Hora'}
-        )
-        fig_temp.update_layout(height=400)
-        st.plotly_chart(fig_temp, use_container_width=True)
-    
-    # Gráfico de umidade
-    if 'humidity' in df.columns:
-        fig_humidity = px.line(
-            df, x='timestamp', y='humidity',
-            title='💧 Umidade Relativa ao Longo do Tempo',
-            labels={'humidity': 'Umidade (%)', 'timestamp': 'Data/Hora'}
-        )
-        fig_humidity.update_layout(height=400)
-        st.plotly_chart(fig_humidity, use_container_width=True)
-
-def create_air_quality_charts(air_df):
-    """Cria gráficos dos dados de qualidade do ar."""
-    if air_df.empty:
-        st.warning("Nenhum dado de qualidade do ar disponível. Colete dados primeiro.")
-        return
-    
-    # Fazer uma cópia para não alterar o original
-    df = air_df.copy()
-    
-    # Converter timestamp para datetime com formato flexível
-    try:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
-    except:
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-    
-    # Gráfico de AQI
-    if 'aqi' in df.columns:
-        fig_aqi = px.line(
-            df, x='timestamp', y='aqi',
-            title='🌫️ Índice de Qualidade do Ar (AQI)',
-            labels={'aqi': 'AQI', 'timestamp': 'Data/Hora'}
-        )
-        fig_aqi.update_layout(height=400)
-        st.plotly_chart(fig_aqi, use_container_width=True)
-
-def show_dashboard():
-    """Mostra o dashboard principal com dados reais."""
-    st.title("🌍 Climate Analytics - Dashboard")
-    st.markdown("### Dados em Tempo Real das APIs")
-    
-    # Carregar dados reais
-    with st.spinner("Carregando dados reais..."):
-        weather_df, air_df = load_real_data()
-    
-    # Informações sobre os dados
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📊 Registros Meteorológicos", len(weather_df))
-    with col2:
-        st.metric("🌫️ Registros de Qualidade do Ar", len(air_df))
-    with col3:
-        last_update = datetime.now().strftime("%H:%M:%S")
-        st.metric("⏰ Última Atualização", last_update)
-      # Botão para coletar novos dados
-    if st.button("🔄 Coletar Novos Dados"):
-        with st.spinner("Coletando dados das APIs..."):
-            result = os.system("python data_collector.py")
-            if result == 0:
-                st.success("✅ Dados coletados com sucesso! Aguarde alguns segundos para ver os dados atualizados.")
-                time.sleep(2)
-            else:
-                st.error("❌ Erro ao coletar dados. Verifique as credenciais.")
-                st.info("💡 Configure suas chaves de API no arquivo .env")
-    
-    # Tabs para diferentes visualizações
-    tab1, tab2, tab3 = st.tabs(["🌡️ Meteorologia", "🌫️ Qualidade do Ar", "📊 Dados Brutos"])
-    
-    with tab1:
-        st.header("Dados Meteorológicos")
-        create_weather_charts(weather_df)
-          # Mostrar dados mais recentes
-        if not weather_df.empty:
-            st.subheader("📋 Dados Mais Recentes")
-            recent_data = weather_df.iloc[0]  # Primeira linha (mais recente)
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("🌡️ Temperatura", f"{recent_data.get('temperature', 'N/A')}°C")
-            with col2:
-                st.metric("💧 Umidade", f"{recent_data.get('humidity', 'N/A')}%")
-            with col3:
-                st.metric("🌬️ Pressão", f"{recent_data.get('pressure', 'N/A')} hPa")
-            with col4:
-                st.metric("💨 Vento", f"{recent_data.get('wind_speed', 'N/A')} m/s")
-    
-    with tab2:
-        st.header("Qualidade do Ar")
-        create_air_quality_charts(air_df)
-          # Mostrar dados mais recentes
-        if not air_df.empty:
-            st.subheader("📋 Dados Mais Recentes")
-            recent_data = air_df.iloc[0]  # Primeira linha (mais recente)
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                aqi = recent_data.get('aqi', 'N/A')
-                st.metric("🌫️ AQI", aqi)
-            with col2:
-                # PM2.5 e PM10 não estão disponíveis na estrutura atual
-                st.metric("🌡️ Temperatura", f"{recent_data.get('temperature', 'N/A')}°C")
-            with col3:
-                st.metric("💧 Umidade", f"{recent_data.get('humidity', 'N/A')}%")
-    
-    with tab3:
-        st.header("Dados Brutos")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("🌡️ Dados Meteorológicos")
-            if not weather_df.empty:
-                st.dataframe(weather_df.head(10), use_container_width=True)
-            else:
-                st.info("Nenhum dado disponível")
-        
-        with col2:
-            st.subheader("🌫️ Dados de Qualidade do Ar")
-            if not air_df.empty:
-                st.dataframe(air_df.head(10), use_container_width=True)
-            else:
-                st.info("Nenhum dado disponível")
-
-def main():
-    """Função principal do dashboard."""
-    
-    # Sidebar com informações
-    with st.sidebar:
-        st.title("🌍 Climate Analytics")
-        st.markdown("---")
-        
-        # Status das credenciais
-        has_credentials = check_credentials()
-        if has_credentials:
-            st.success("✅ Credenciais configuradas")
-        else:
-            st.error("❌ Credenciais não encontradas")
-        
-        st.markdown("---")
-        st.markdown("### 📊 Status do Sistema")
-        
-        # Verificar banco de dados
-        try:
-            db_exists = os.path.exists(Config.DATABASE_PATH)
-            st.write(f"**Banco de dados:** {'✅ OK' if db_exists else '❌ Não encontrado'}")
-        except:
-            st.write("**Banco de dados:** ❌ Erro ao verificar")
-            
-        st.write(f"**Arquivo .env:** {'✅ OK' if os.path.exists('.env') else '❌ Não encontrado'}")
-        
-        st.markdown("---")
-        st.markdown("### 🔧 Ações")
-        if st.button("🔄 Coletar Dados"):
-            with st.spinner("Coletando dados..."):
-                result = os.system("python data_collector.py")
-                if result == 0:
-                    st.success("Dados coletados!")
-                else:
-                    st.error("Erro ao coletar dados")
-    
-    # Mostrar dashboard ou página de boas-vindas
     if check_credentials():
         show_dashboard()
     else:

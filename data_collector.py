@@ -5,6 +5,7 @@ Executa coleta automatizada e armazena os dados em banco local.
 import sqlite3
 import json
 import logging
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -257,9 +258,40 @@ class DataCollector:
 
 def main():
     """Função principal."""
+    parser = argparse.ArgumentParser(description='Coletor de dados climáticos')
+    parser.add_argument('--city', type=str, help='Nome da cidade')
+    parser.add_argument('--lat', type=float, help='Latitude')
+    parser.add_argument('--lon', type=float, help='Longitude')
+    parser.add_argument('--country', type=str, help='País')
+    
+    args = parser.parse_args()
+    
     try:
         collector = DataCollector()
-        collector.collect_all_data()
+        
+        # Usar argumentos se fornecidos
+        if args.city or args.lat or args.lon:
+            # Extrair nome da cidade sem país se estiver no formato "Cidade, País"
+            city_name = args.city.split(',')[0].strip() if args.city else None
+            country_code = args.country or 'BR'  # Default para Brasil
+            
+            # Coletar dados para cidade específica
+            if city_name:
+                logger.info(f"Coletando dados para {city_name}, {country_code}")
+                collector.collect_weather_data(city=city_name, country=country_code)
+                
+                # Para qualidade do ar, usar coordenadas se fornecidas
+                if args.lat and args.lon:
+                    collector.collect_air_quality_data(lat=args.lat, lon=args.lon)
+                else:
+                    # Usar coordenadas padrão se não fornecidas
+                    collector.collect_air_quality_data()
+            else:
+                logger.warning("Nome da cidade não fornecido. Usando configuração padrão.")
+                collector.collect_all_data()
+        else:
+            # Coleta padrão
+            collector.collect_all_data()
         
     except Exception as e:
         logger.error(f"Erro na execução principal: {e}")
